@@ -164,12 +164,12 @@ class Deleter:
                     'remove_function_fallback_name': 'delete_policy',
                     'remove_kwargs': {'PolicyArn': resource_name},
                     'remove_arg_name': 'VersionId',
+                    'remove_arg_fallback_name': 'PolicyArn',
                 },
             ],
         }
 
         for function_spec in remove_function_specs[resource_type]:
-            # list_function = getattr(self._iam, function_spec['list_function_name'])
             list_data_items_key = function_spec['list_data_items_key']
             remove_function = getattr(
                 self._iam, function_spec['remove_function_name'])
@@ -180,38 +180,50 @@ class Deleter:
             list_kwargs = function_spec['list_kwargs']
             pages = self._iam.get_paginator(
                 function_spec['list_function_name']).paginate(**list_kwargs)
-            for page in pages:
-                list_items = page[list_data_items_key]
-                for list_item in list_items:
-                    # If the item has a value for remove_arg_name (e.g. PolicyArn) then grab that
-                    # Otherwise
-                    # (which is the case for list_role_policies, which returns only a list of strings, being PolicyNames)
-                    # use the whole value itself (e.g. the PolicyName)
-                    kwargs = function_spec['remove_kwargs'].copy()
-                    try:
-                        kwargs[remove_arg_name] = list_item[remove_arg_name]
-                    except (KeyError, TypeError):
-                        kwargs[remove_arg_name] = list_item
-
-                    if deactivate_function:
+            try:
+                for page in pages:
+                    list_items = page[list_data_items_key]
+                    for list_item in list_items:
+                        # If the item has a value for remove_arg_name (e.g. PolicyArn) then grab that
+                        # Otherwise
+                        # (which is the case for list_role_policies, which returns only a list of strings, being PolicyNames)
+                        # use the whole value itself (e.g. the PolicyName)
+                        kwargs = function_spec['remove_kwargs'].copy()
+                        from pprint import pprint
+                        pprint(list_item)
                         try:
-                            deactivate_function(**kwargs)
-                        except botocore.exceptions.ClientError as error:
-                            print(
-                                f'Error deactivating: {error.response["Error"]["Message"]} - Skipping')
-                    try:
-                        remove_function(**kwargs)
-                    except botocore.exceptions.ClientError as error:
-                        if "Error removing: Cannot delete the default version of a policy." == error.response["Error"]["Message"]:
+                            kwargs[remove_arg_name] = list_item[remove_arg_name]
+                        except (KeyError, TypeError):
+                            kwargs[remove_arg_name] = list_item
+
+                        if deactivate_function:
                             try:
-                                remove_function_fallback = getattr(
-                                    self._iam, function_spec['remove_function_fallback_name'])
-                                remove_function_fallback(**kwargs)
+                                deactivate_function(**kwargs)
                             except botocore.exceptions.ClientError as error:
                                 print(
-                                    f'Error removing: {error.response["Error"]["Message"]} - Skipping')
-                        print(
-                            f'Error removing: {error.response["Error"]["Message"]} - Skipping')
+                                    f'Error deactivating: {error.response["Error"]["Message"]} - Skipping')
+                        try:
+                            remove_function(**kwargs)
+                        except botocore.exceptions.ClientError as error:
+                            if "Cannot delete the default version of a policy." == error.response["Error"]["Message"]:
+                                try:
+                                    print(
+                                        f"Falling back to delete function {function_spec['remove_function_fallback_name']}")
+                                    remove_function_fallback = getattr(
+                                        self._iam, function_spec['remove_function_fallback_name'])
+                                    kwargs = function_spec['remove_kwargs'].copy(
+                                    )
+                                    remove_function_fallback(**kwargs)
+                                except botocore.exceptions.ClientError as inner_error:
+                                    print(
+                                        f"Error removing with fallback function '{function_spec['remove_function_fallback_name']}': {inner_error.response['Error']['Message']} - Skipping")
+                                    pprint(kwargs)
+                            print(
+                                f'Error removing: {error.response["Error"]["Message"]} - Skipping')
+            except self._iam.exceptions.NoSuchEntityException as error:
+                # Possibly our cached resources are out of date, ignore
+                print(
+                    "Couldn't list attached resources for {function_spec['list_kwargs']}, skip")
 
     def detach_policy_from_principal(self, policy_attachment):
         if policy_attachment.get('User'):
