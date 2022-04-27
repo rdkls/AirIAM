@@ -182,7 +182,7 @@ class RuntimeIamScanner:
         futures = []
         print(ERASE_LINE + f"\rGenerating usage reports for {len(arn_list)} principals")
 
-        with concurrent.futures.ThreadPoolExecutor(max_workers=int(os.getenv("MAX_WORKERS"), 5)) as executor:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=int(os.getenv("MAX_WORKERS", 5))) as executor:
             for arn in arn_list:
                 futures.append(executor.submit(
                     RuntimeIamScanner._generate_last_access_for_entity,
