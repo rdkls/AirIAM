@@ -20,7 +20,7 @@ class Deleter:
     def _delete_inline_policies(self, resource_name, resource_type):
         resource_function_args_mapping = {
             'user': {
-                'list_function' : 'list_user_policies',
+                'list_function': 'list_user_policies',
                 'detach_function': 'delete_user_policy',
                 'arg_name': 'UserName',
             },
@@ -30,8 +30,10 @@ class Deleter:
                 'arg_name': 'RoleName'
             },
         }
-        list_function = getattr(self._iam, resource_function_args_mapping[resource_type]['list_function'])
-        detach_function = getattr(self._iam, resource_function_args_mapping[resource_type]['detach_function'])
+        list_function = getattr(
+            self._iam, resource_function_args_mapping[resource_type]['list_function'])
+        detach_function = getattr(
+            self._iam, resource_function_args_mapping[resource_type]['detach_function'])
         arg_name = resource_function_args_mapping[resource_type]['arg_name']
         kwargs = {arg_name: resource_name}
 
@@ -40,14 +42,17 @@ class Deleter:
         marker = None
         while more_results:
             if marker:
-                res = self._iam.list_role_policies(RoleName=role_name, Marker=marker)
+                res = self._iam.list_role_policies(
+                    RoleName=role_name, Marker=marker)
             else:
                 res = self._iam.list_role_policies(RoleName=role_name)
             for policy_name in res['PolicyNames']:
                 try:
-                    self._iam.delete_role_policy(RoleName=role_name, PolicyName=policy_name)
+                    self._iam.delete_role_policy(
+                        RoleName=role_name, PolicyName=policy_name)
                 except botocore.exceptions.ClientError as error:
-                    print(f'Error deleting inline role policy: {error.response["Error"]["Message"]} - Skipping')
+                    print(
+                        f'Error deleting inline role policy: {error.response["Error"]["Message"]} - Skipping')
             more_results = res.get('IsTruncated', False)
             if more_results:
                 marker = res['Marker']
@@ -156,6 +161,7 @@ class Deleter:
                     'list_kwargs': {'PolicyArn': resource_name},
                     'list_data_items_key': 'Versions',
                     'remove_function_name': 'delete_policy_version',
+                    'remove_function_fallback_name': 'delete_policy',
                     'remove_kwargs': {'PolicyArn': resource_name},
                     'remove_arg_name': 'VersionId',
                 },
@@ -165,12 +171,15 @@ class Deleter:
         for function_spec in remove_function_specs[resource_type]:
             # list_function = getattr(self._iam, function_spec['list_function_name'])
             list_data_items_key = function_spec['list_data_items_key']
-            remove_function = getattr(self._iam, function_spec['remove_function_name'])
+            remove_function = getattr(
+                self._iam, function_spec['remove_function_name'])
             remove_arg_name = function_spec['remove_arg_name']
-            deactivate_function = getattr(self._iam, function_spec.get('deactivate_function_name', ''), None)
+            deactivate_function = getattr(self._iam, function_spec.get(
+                'deactivate_function_name', ''), None)
 
             list_kwargs = function_spec['list_kwargs']
-            pages = self._iam.get_paginator(function_spec['list_function_name']).paginate(**list_kwargs)
+            pages = self._iam.get_paginator(
+                function_spec['list_function_name']).paginate(**list_kwargs)
             for page in pages:
                 list_items = page[list_data_items_key]
                 for list_item in list_items:
@@ -188,60 +197,86 @@ class Deleter:
                         try:
                             deactivate_function(**kwargs)
                         except botocore.exceptions.ClientError as error:
-                            print(f'Error deactivating: {error.response["Error"]["Message"]} - Skipping')
+                            print(
+                                f'Error deactivating: {error.response["Error"]["Message"]} - Skipping')
                     try:
                         remove_function(**kwargs)
                     except botocore.exceptions.ClientError as error:
-                        print(f'Error removing: {error.response["Error"]["Message"]} - Skipping')
+                        if "Error removing: Cannot delete the default version of a policy." == error.response["Error"]["Message"]:
+                            try:
+                                remove_function_fallback = getattr(
+                                    self._iam, function_spec['remove_function_fallback_name'])
+                                remove_function_fallback(**kwargs)
+                            except botocore.exceptions.ClientError as error:
+                                print(
+                                    f'Error removing: {error.response["Error"]["Message"]} - Skipping')
+                        print(
+                            f'Error removing: {error.response["Error"]["Message"]} - Skipping')
 
     def detach_policy_from_principal(self, policy_attachment):
         if policy_attachment.get('User'):
             try:
-                self._iam.delete_user_policy(UserName=policy_attachment.get('User'), PolicyName=policy_attachment['PolicyArn'])
-                print(f"Deleted inline policy {policy_attachment['PolicyArn']}")
+                self._iam.delete_user_policy(UserName=policy_attachment.get(
+                    'User'), PolicyName=policy_attachment['PolicyArn'])
+                print(
+                    f"Deleted inline policy {policy_attachment['PolicyArn']}")
             except ClientError:
                 try:
-                    self._iam.detach_user_policy(UserName=policy_attachment.get('User'), PolicyArn=policy_attachment['PolicyArn'])
+                    self._iam.detach_user_policy(UserName=policy_attachment.get(
+                        'User'), PolicyArn=policy_attachment['PolicyArn'])
                     print(f"Detached policy {policy_attachment['PolicyArn']}")
                 except ClientError:
-                    print(f"Couldn't delete/detach policy {policy_attachment['PolicyArn']} from user {policy_attachment.get('User')} - Skipping")
+                    print(
+                        f"Couldn't delete/detach policy {policy_attachment['PolicyArn']} from user {policy_attachment.get('User')} - Skipping")
         elif policy_attachment.get('Group'):
             try:
-                self._iam.delete_group_policy(GroupName=policy_attachment.get('Group'), PolicyName=policy_attachment['PolicyArn'])
-                print(f"Deleted inline policy {policy_attachment['PolicyArn']}")
+                self._iam.delete_group_policy(GroupName=policy_attachment.get(
+                    'Group'), PolicyName=policy_attachment['PolicyArn'])
+                print(
+                    f"Deleted inline policy {policy_attachment['PolicyArn']}")
             except ClientError:
                 try:
-                    self._iam.detach_group_policy(GroupName=policy_attachment.get('Group'), PolicyArn=policy_attachment['PolicyArn'])
+                    self._iam.detach_group_policy(GroupName=policy_attachment.get(
+                        'Group'), PolicyArn=policy_attachment['PolicyArn'])
                     print(f"Detached policy {policy_attachment['PolicyArn']}")
                 except ClientError:
-                    print(f"Couldn't delete/detach policy {policy_attachment['PolicyArn']} from user {policy_attachment.get('Group')} - Skipping")
+                    print(
+                        f"Couldn't delete/detach policy {policy_attachment['PolicyArn']} from user {policy_attachment.get('Group')} - Skipping")
         elif policy_attachment.get('Role'):
             try:
-                self._iam.delete_role_policy(RoleName=policy_attachment.get('Role'), PolicyName=policy_attachment['PolicyArn'])
-                print(f"Deleted inline policy {policy_attachment['PolicyArn']}")
+                self._iam.delete_role_policy(RoleName=policy_attachment.get(
+                    'Role'), PolicyName=policy_attachment['PolicyArn'])
+                print(
+                    f"Deleted inline policy {policy_attachment['PolicyArn']}")
             except ClientError:
                 try:
-                    self._iam.detach_role_policy(RoleName=policy_attachment.get('Role'), PolicyArn=policy_attachment['PolicyArn'])
+                    self._iam.detach_role_policy(RoleName=policy_attachment.get(
+                        'Role'), PolicyArn=policy_attachment['PolicyArn'])
                     print(f"Detached policy {policy_attachment['PolicyArn']}")
                 except ClientError:
-                    print(f"Couldn't delete/detach policy {policy_attachment['PolicyArn']} from user {policy_attachment.get('Role')} - Skipping")
+                    print(
+                        f"Couldn't delete/detach policy {policy_attachment['PolicyArn']} from user {policy_attachment.get('Role')} - Skipping")
         else:
-            print(f"Don't know how to detach policy {policy_attachment['PolicyArn']} from principal {policy_attachment.get('User','') + policy_attachment.get('Group','') + policy_attachment.get('Policy','')} - Skipping")
+            print(
+                f"Don't know how to detach policy {policy_attachment['PolicyArn']} from principal {policy_attachment.get('User','') + policy_attachment.get('Group','') + policy_attachment.get('Policy','')} - Skipping")
 
     def delete_access_key(self, user_name, access_key_id):
         # Disable the access key
         try:
-            self._iam.update_access_key(UserName=user_name, AccessKeyId=access_key_id, Status='Inactive')
+            self._iam.update_access_key(
+                UserName=user_name, AccessKeyId=access_key_id, Status='Inactive')
         except botocore.exceptions.ClientError:
             # Don't care if it's already deactivated
             pass
 
         # Delete the access key
         try:
-            self._iam.delete_access_key(UserName=user_name, AccessKeyId=access_key_id)
+            self._iam.delete_access_key(
+                UserName=user_name, AccessKeyId=access_key_id)
             print(f'Deleted access key {access_key_id} for user {user_name}')
         except botocore.exceptions.ClientError as error:
-            print(f'Error deleting access key: {error.response["Error"]["Message"]} - Skipping')
+            print(
+                f'Error deleting access key: {error.response["Error"]["Message"]} - Skipping')
 
     def delete_user(self, user_name):
         self._remove_all_attached(user_name, 'user')
@@ -256,7 +291,8 @@ class Deleter:
             self._iam.delete_user(UserName=user_name)
             print(f'Deleted user {user_name}')
         except botocore.exceptions.ClientError as error:
-            print(f'Error deleting user: {error.response["Error"]["Message"]} - Skipping')
+            print(
+                f'Error deleting user: {error.response["Error"]["Message"]} - Skipping')
 
     def delete_policy(self, policy_arn):
         self._remove_all_attached(policy_arn, 'policy')
@@ -265,7 +301,8 @@ class Deleter:
             self._iam.delete_policy(PolicyArn=policy_arn)
             print(f'Deleted policy {policy_arn}')
         except botocore.exceptions.ClientError as error:
-            print(f'Error deleting policy: {error.response["Error"]["Message"]} - Skipping')
+            print(
+                f'Error deleting policy: {error.response["Error"]["Message"]} - Skipping')
 
     def delete_role(self, role_name):
         self._remove_all_attached(role_name, 'role')
@@ -275,7 +312,8 @@ class Deleter:
             self._iam.delete_role(RoleName=role_name)
             print(f'Deleted role {role_name}')
         except botocore.exceptions.ClientError as error:
-            print(f'Error deleting role: {error.response["Error"]["Message"]} - Skipping')
+            print(
+                f'Error deleting role: {error.response["Error"]["Message"]} - Skipping')
 
     def delete_group(self, group_name):
         self._remove_all_attached(group_name, 'group')
@@ -285,4 +323,5 @@ class Deleter:
             self._iam.delete_group(GroupName=group_name)
             print(f'Deleted group {group_name}')
         except botocore.exceptions.ClientError as error:
-            print(f'Error deleting group: {error.response["Error"]["Message"]} - Skipping')
+            print(
+                f'Error deleting group: {error.response["Error"]["Message"]} - Skipping')
