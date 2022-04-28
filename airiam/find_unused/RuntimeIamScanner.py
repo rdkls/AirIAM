@@ -14,7 +14,7 @@ from airiam.models.RuntimeReport import RuntimeReport
 config = Config(retries={'max_attempts': 10, 'mode': 'standard'})
 IAM_DATA_FILE_NAME = "iam_data.json"
 ERASE_LINE = '\x1b[2K'
-
+THREADPOOL_MAX_WORKERS = 10
 
 def get_iam_data_file(account_id: str):
     parent = f"./aircache/{account_id}"
@@ -182,7 +182,7 @@ class RuntimeIamScanner:
         futures = []
         print(ERASE_LINE + f"\rGenerating usage reports for {len(arn_list)} principals")
 
-        with concurrent.futures.ThreadPoolExecutor(max_workers=int(os.getenv("MAX_WORKERS", 5))) as executor:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=int(os.getenv("MAX_WORKERS", THREADPOOL_MAX_WORKERS))) as executor:
             for arn in arn_list:
                 futures.append(executor.submit(
                     RuntimeIamScanner._generate_last_access_for_entity,
